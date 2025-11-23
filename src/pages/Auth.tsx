@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -14,8 +16,11 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [cpf, setCpf] = useState("");
   const [fullName, setFullName] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -88,6 +93,14 @@ const Auth = () => {
     setLoading(true);
 
     try {
+      if (password !== confirmPassword) {
+        throw new Error("As senhas não coincidem");
+      }
+
+      if (!acceptedTerms) {
+        throw new Error("É necessário aceitar os Termos de Uso");
+      }
+
       const cpfNumbers = cpf.replace(/\D/g, "");
       
       if (cpfNumbers.length !== 11) {
@@ -283,6 +296,52 @@ const Auth = () => {
                     required
                     minLength={6}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password-confirm">Confirmar senha</Label>
+                  <Input
+                    id="password-confirm"
+                    type="password"
+                    placeholder="Repita sua senha"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                </div>
+                <div className="flex items-start gap-3">
+                  <Checkbox id="terms" checked={acceptedTerms} onCheckedChange={(v) => setAcceptedTerms(!!v)} />
+                  <div className="space-y-1">
+                    <Label htmlFor="terms">Aceito os Termos de Uso</Label>
+                    <p className="text-xs text-muted-foreground">
+                      O projeto é um clube de crédito rotativo. Não há garantia de retorno ou lucros; a plataforma apenas intermedia a gestão entre pessoas físicas.
+                      Valores e compromissos são de responsabilidade dos membros do grupo.
+                    </p>
+                    <Dialog open={termsOpen} onOpenChange={setTermsOpen}>
+                      <DialogTrigger asChild>
+                        <Button type="button" variant="link" className="px-0">Ler Termos de Uso</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Termos de Uso • GiroClub</DialogTitle>
+                          <DialogDescription>
+                            🏦 Legalidade
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3 text-sm">
+                          <p>
+                            O dono da plataforma não empresta dinheiro. A plataforma apenas intermedia a gestão entre pessoas físicas, como um clube de crédito rotativo.
+                          </p>
+                          <p>
+                            O projeto não garante retorno nem lucros. O serviço limita-se à gestão e controle de grupos.
+                          </p>
+                          <p>
+                            Os valores, aportes e responsabilidades são exclusivos dos membros de cada grupo. A plataforma não se responsabiliza por inadimplências ou acordos privados.
+                          </p>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
