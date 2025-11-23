@@ -40,6 +40,13 @@ const NewGroup = () => {
         .insert({
           name: groupName,
           created_by: userId,
+          status: "active",
+          current_cycle: 1,
+          max_members: 5,
+          deposit_amount: 100,
+          weekly_payment: 80,
+          payout_amount: 300,
+          service_fee_percent: 5,
         })
         .select()
         .single();

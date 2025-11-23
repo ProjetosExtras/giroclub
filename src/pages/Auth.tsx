@@ -53,8 +53,24 @@ const Auth = () => {
     setLoading(true);
 
     try {
+      let emailToUse = email;
+      const cleanCpf = cpf.replace(/\D/g, "");
+
+      if (!emailToUse && cleanCpf) {
+        const { data: profile, error: pErr } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("cpf", cleanCpf)
+          .maybeSingle();
+        if (pErr) throw pErr;
+        if (!profile || !profile.email) {
+          throw new Error("CPF não encontrado ou sem email associado");
+        }
+        emailToUse = profile.email as string;
+      }
+
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: emailToUse,
         password,
       });
 
@@ -182,14 +198,24 @@ const Auth = () => {
             <TabsContent value="signin">
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email-signin">Email</Label>
+                  <Label htmlFor="email-signin">Email (ou deixe em branco para usar CPF)</Label>
                   <Input
                     id="email-signin"
                     type="email"
                     placeholder="seu@email.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cpf-signin">CPF (opcional)</Label>
+                  <Input
+                    id="cpf-signin"
+                    type="text"
+                    placeholder="000.000.000-00"
+                    value={cpf}
+                    onChange={handleCPFChange}
+                    maxLength={14}
                   />
                 </div>
                 <div className="space-y-2">
