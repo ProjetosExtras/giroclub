@@ -66,6 +66,14 @@ const GroupDetails = () => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [addCpf, setAddCpf] = useState("");
   const [adding, setAdding] = useState(false);
+  const [inviteCpf, setInviteCpf] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [inviteProfileId, setInviteProfileId] = useState<string | null>(null);
+  const [inviteProfileName, setInviteProfileName] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [requestErrorOpen, setRequestErrorOpen] = useState(false);
+  const [requestErrorMsg, setRequestErrorMsg] = useState("");
 
   const formatCurrency = (n?: number | null) => (typeof n === "number" ? n.toFixed(2) : "0.00");
   const isValidUUID = (v?: string) => !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -347,9 +355,127 @@ const GroupDetails = () => {
                       <p className="text-sm text-muted-foreground mb-3">
                         {group.max_members - members.length} vagas disponíveis
                       </p>
-                      <Button variant="outline" size="sm">
-                        Convidar membros
-                      </Button>
+                      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" onClick={() => setInviteOpen(true)}>Convidar membros</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Convidar membro por CPF</DialogTitle>
+                            <DialogDescription>O convidado não pode já participar de outro grupo nem ser criador de um grupo.</DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-3">
+                            <Input
+                              placeholder="CPF"
+                              value={inviteCpf}
+                              onChange={async e => {
+                                const v = e.target.value;
+                                setInviteCpf(v);
+                                const clean = v.replace(/[^0-9]/g, "");
+                                if (clean.length === 11) {
+                                  const { data: profile } = await supabase
+                                    .from("profiles")
+                                    .select("id,full_name,cpf")
+                                    .eq("cpf", clean)
+                                    .maybeSingle();
+                                  if (profile) {
+                                    setInviteProfileId(profile.id as string);
+                                    setInviteProfileName(profile.full_name as string);
+                                  } else {
+                                    setInviteProfileId(null);
+                                    setInviteProfileName(null);
+                                  }
+                                } else {
+                                  setInviteProfileId(null);
+                                  setInviteProfileName(null);
+                                }
+                              }}
+                            />
+                            {inviteCpf.replace(/[^0-9]/g, "").length === 11 && (
+                              <p className="text-sm text-muted-foreground">
+                                {inviteProfileName ? `Usuário: ${inviteProfileName}` : "Usuário não encontrado"}
+                              </p>
+                            )}
+                          </div>
+                          <DialogFooter>
+                            <Button disabled={inviting} onClick={async () => {
+                              try {
+                                setInviting(true);
+                                if (!id) return;
+                                if (members.length >= (group.max_members || 5)) {
+                                  toast.error("Grupo já está cheio");
+                                  return;
+                                }
+                                const cleanCpf = inviteCpf.replace(/[^0-9]/g, "");
+                                if (!cleanCpf) {
+                                  toast.error("Informe um CPF válido");
+                                  return;
+                                }
+                                let profileId = inviteProfileId;
+                                if (!profileId) {
+                                  const { data: profile, error: pErr } = await supabase
+                                    .from("profiles")
+                                    .select("id,full_name,cpf")
+                                    .eq("cpf", cleanCpf)
+                                    .single();
+                                  if (pErr || !profile) {
+                                    toast.error("Usuário não encontrado");
+                                    return;
+                                  }
+                                  profileId = profile.id as string;
+                                }
+                                const { data: anyGroup } = await supabase
+                                  .from("group_members")
+                                  .select("group_id")
+                                  .eq("profile_id", profileId)
+                                  .limit(1);
+                                if (Array.isArray(anyGroup) && anyGroup.length > 0) {
+                                  toast.error("Usuário já participa de um grupo");
+                                  return;
+                                }
+                                const { data: createdAny } = await supabase
+                                  .from("groups")
+                                  .select("id")
+                                  .eq("created_by", profileId)
+                                  .limit(1);
+                                if (Array.isArray(createdAny) && createdAny.length > 0) {
+                                  toast.error("Usuário já é criador de um grupo");
+                                  return;
+                                }
+                                const used = new Set(members.map(m => m.position));
+                                const max = group.max_members || 5;
+                                let pos = 1;
+                                while (pos <= max && used.has(pos)) pos++;
+                                if (pos > max) {
+                                  toast.error("Não há posições disponíveis");
+                                  return;
+                                }
+                                const { error: insErr } = await supabase
+                                  .from("group_members")
+                                  .insert({ group_id: id, profile_id: profileId, position: pos });
+                                if (insErr) {
+                                  if (String(insErr.message || "").toLowerCase().includes("policy") || String(insErr.message || "").toLowerCase().includes("permission")) {
+                                    toast.error("Apenas o criador do grupo pode convidar membros");
+                                  } else {
+                                    throw insErr;
+                                  }
+                                  return;
+                                }
+                                toast.success("Convite realizado e membro adicionado");
+                                setInviteCpf("");
+                                setInviteProfileId(null);
+                                setInviteProfileName(null);
+                                setInviteOpen(false);
+                                await loadGroupData();
+                              } catch (e: any) {
+                                toast.error(e.message || "Falha ao convidar membro");
+                              } finally {
+                                setInviting(false);
+                              }
+                            }}>Convidar</Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   )}
                 </div>
@@ -449,8 +575,80 @@ const GroupDetails = () => {
                 <Button variant="outline" className="w-full">
                   Ver meus pagamentos
                 </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={requesting}
+                  onClick={async () => {
+                    try {
+                      setRequesting(true);
+                      const { data: { session } } = await supabase.auth.getSession();
+                      if (!session) {
+                        navigate("/auth");
+                        return;
+                      }
+                      const { data: member } = await supabase
+                        .from("group_members")
+                        .select("id,position,has_received")
+                        .eq("group_id", id)
+                        .eq("profile_id", session.user.id)
+                        .maybeSingle();
+                      if (!member) {
+                        setRequestErrorMsg("Você não é membro deste grupo");
+                        setRequestErrorOpen(true);
+                        return;
+                      }
+                      if (member.has_received) {
+                        setRequestErrorMsg("Você já recebeu neste ciclo");
+                        setRequestErrorOpen(true);
+                        return;
+                      }
+                      if (member.position !== group.current_cycle) {
+                        setRequestErrorMsg("Aguarde sua vez");
+                        setRequestErrorOpen(true);
+                        return;
+                      }
+                      const { data: prof } = await supabase
+                        .from("profiles")
+                        .select("full_name,cpf")
+                        .eq("id", session.user.id)
+                        .maybeSingle();
+                      const amount = group.payout_amount;
+                      const payload: any = {
+                        user_id: session.user.id,
+                        full_name: prof?.full_name || null,
+                        cpf: prof?.cpf || null,
+                        amount,
+                        status: "pending",
+                      };
+                      const { error: reqErr } = await supabase
+                        .from("loan_requests")
+                        .insert(payload);
+                      if (reqErr) throw reqErr;
+                      toast.success("Solicitação de empréstimo enviada");
+                    } catch (e: any) {
+                      toast.error(e.message || "Falha ao solicitar empréstimo");
+                    } finally {
+                      setRequesting(false);
+                    }
+                  }}
+                >
+                  Solicitar empréstimo
+                </Button>
               </CardContent>
             </Card>
+
+            <Dialog open={requestErrorOpen} onOpenChange={setRequestErrorOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Não é sua vez</DialogTitle>
+                  <DialogDescription>{requestErrorMsg || "Aguarde sua vez"}</DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button onClick={() => setRequestErrorOpen(false)}>Entendi</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {/* Status Summary */}
           <Card className="border-secondary/20 bg-secondary/5">
@@ -495,7 +693,9 @@ const GroupDetails = () => {
                 <p className="text-center text-sm text-muted-foreground py-6">Nenhum membro</p>
               ) : (
                 <div className="space-y-2">
-                  {members.map(m => {
+                  {members.filter(m => m.has_received).length === 0 ? (
+                    <p className="text-center text-sm text-muted-foreground py-3">Nenhum membro com parcelas ativas</p>
+                  ) : members.filter(m => m.has_received).map(m => {
                     const expected = 4;
                     const paidCount = payments.filter(p => p.payer_id === m.id && p.status === "paid").length;
                     const remaining = Math.max(expected - paidCount, 0);
@@ -503,7 +703,12 @@ const GroupDetails = () => {
                       <div key={m.id} className="flex items-center justify-between rounded-lg border p-3">
                         <div>
                           <p className="font-medium text-foreground">{m.profile.full_name}</p>
-                          <p className="text-xs text-muted-foreground">Posição {m.position}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Posição {m.position}
+                            {m.position === group.current_cycle && !m.has_received ? (
+                              <span className="ml-2 text-[10px] font-semibold text-secondary">Pode solicitar</span>
+                            ) : null}
+                          </p>
                         </div>
                         <div className="text-right">
                           <Badge variant={remaining === 0 ? "secondary" : "outline"}>

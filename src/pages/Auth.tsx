@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -19,9 +19,18 @@ const Auth = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [cpf, setCpf] = useState("");
   const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
   const [tab, setTab] = useState("signin");
+  const [selfieFile, setSelfieFile] = useState<File | null>(null);
+  const [rgFrontFile, setRgFrontFile] = useState<File | null>(null);
+  const [rgBackFile, setRgBackFile] = useState<File | null>(null);
+  const [cpfFrontFile, setCpfFrontFile] = useState<File | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -108,6 +117,10 @@ const Auth = () => {
         throw new Error("CPF deve ter 11 dígitos");
       }
 
+      if (!selfieFile) {
+        throw new Error("Envie uma selfie");
+      }
+
       const { data: signUpData, error } = await supabase.auth.signUp({
         email,
         password,
@@ -141,6 +154,34 @@ const Auth = () => {
               is_admin: makeAdmin,
             });
           if (profileError) throw profileError;
+        }
+
+        try {
+          const { error: phoneErr } = await supabase
+            .from("profiles")
+            .update({ phone: phone || null })
+            .eq("id", user.id);
+          if (phoneErr) throw phoneErr;
+        } catch {}
+
+        try {
+          const bucket = supabase.storage.from("kyc");
+          const basePath = `profiles/${user.id}`;
+          if (selfieFile) {
+            await bucket.upload(`${basePath}/selfie_${Date.now()}.jpg`, selfieFile, { upsert: true });
+          }
+          if (rgFrontFile) {
+            await bucket.upload(`${basePath}/rg_front_${Date.now()}.jpg`, rgFrontFile, { upsert: true });
+          }
+          if (rgBackFile) {
+            await bucket.upload(`${basePath}/rg_back_${Date.now()}.jpg`, rgBackFile, { upsert: true });
+          }
+          if (cpfFrontFile) {
+            await bucket.upload(`${basePath}/cpf_front_${Date.now()}.jpg`, cpfFrontFile, { upsert: true });
+          }
+          
+        } catch {
+          toast.warning("Cadastro feito, mas houve falha ao enviar documentos");
         }
 
         // Auto-assign to an available group with vacancies
@@ -205,6 +246,45 @@ const Auth = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      setCameraOpen(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+    } catch {
+      toast.error("Não foi possível abrir a câmera");
+    }
+  };
+
+  const stopCamera = () => {
+    const stream = videoRef.current?.srcObject as MediaStream | null;
+    stream?.getTracks().forEach(t => t.stop());
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraOpen(false);
+  };
+
+  const captureSelfie = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const w = videoRef.current.videoWidth || 640;
+    const h = videoRef.current.videoHeight || 480;
+    canvasRef.current.width = w;
+    canvasRef.current.height = h;
+    const ctx = canvasRef.current.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(videoRef.current, 0, 0, w, h);
+    canvasRef.current.toBlob(blob => {
+      if (!blob) return;
+      const file = new File([blob], `selfie_${Date.now()}.jpg`, { type: "image/jpeg" });
+      setSelfieFile(file);
+      const url = URL.createObjectURL(blob);
+      setSelfiePreview(url);
+      stopCamera();
+    }, "image/jpeg", 0.9);
   };
 
   return (
@@ -290,6 +370,17 @@ const Auth = () => {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="phone">WhatsApp</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="(DDD) 9XXXX-XXXX"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="email-signup">Email</Label>
                   <Input
                     id="email-signup"
@@ -324,6 +415,48 @@ const Auth = () => {
                     minLength={6}
                   />
                 </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Verificação de identidade</CardTitle>
+                    <CardDescription>Envie selfie e documentos (RG e CPF)</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-2">
+                      <Label>Selfie</Label>
+                      {!selfiePreview ? (
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant="outline" onClick={openCamera}>Abrir câmera</Button>
+                        </div>
+                      ) : (
+                        <img src={selfiePreview} alt="Selfie" className="h-24 w-24 rounded-md object-cover" />
+                      )}
+                      {cameraOpen && (
+                        <div className="space-y-2">
+                          <video ref={videoRef} className="w-full rounded-md bg-black" />
+                          <div className="flex items-center gap-2">
+                            <Button type="button" onClick={captureSelfie}>Capturar</Button>
+                            <Button type="button" variant="outline" onClick={stopCamera}>Fechar câmera</Button>
+                          </div>
+                          <canvas ref={canvasRef} className="hidden" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>RG frente</Label>
+                        <Input type="file" accept="image/*" onChange={(e) => setRgFrontFile(e.target.files?.[0] || null)} required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>RG verso</Label>
+                        <Input type="file" accept="image/*" onChange={(e) => setRgBackFile(e.target.files?.[0] || null)} required />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>CPF frente</Label>
+                      <Input type="file" accept="image/*" onChange={(e) => setCpfFrontFile(e.target.files?.[0] || null)} required />
+                    </div>
+                  </CardContent>
+                </Card>
                 <div className="flex items-start gap-3">
                   <Checkbox id="terms" checked={acceptedTerms} onCheckedChange={(v) => setAcceptedTerms(!!v)} />
                   <div className="space-y-1">
