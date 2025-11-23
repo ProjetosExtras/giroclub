@@ -87,10 +87,10 @@ const AdminGroups = () => {
 
   const deleteGroup = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("groups")
-        .delete()
-        .eq("id", id);
+      await supabase.from("payments").delete().eq("group_id", id);
+      await supabase.from("deposits").delete().eq("group_id", id);
+      await supabase.from("group_members").delete().eq("group_id", id);
+      const { error } = await supabase.from("groups").delete().eq("id", id);
       if (error) throw error;
       toast.success("Grupo excluído");
       await load();

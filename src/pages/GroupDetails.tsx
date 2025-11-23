@@ -51,6 +51,7 @@ interface Payment {
   status: string | null;
   due_date: string;
   paid_at: string | null;
+  payer_id: string;
 }
 
 const GroupDetails = () => {
@@ -145,7 +146,7 @@ const GroupDetails = () => {
 
       const { data: paymentsData, error: paymentsError } = await supabase
         .from("payments")
-        .select("id,amount,status,due_date,paid_at")
+        .select("id,amount,status,due_date,paid_at,payer_id")
         .eq("group_id", id)
         .order("week_number", { ascending: true });
       if (paymentsError) throw paymentsError;
@@ -452,37 +453,70 @@ const GroupDetails = () => {
             </Card>
 
             {/* Status Summary */}
-            <Card className="border-secondary/20 bg-secondary/5">
-              <CardHeader>
-                <CardTitle className="text-base">Status do Grupo</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Membros que receberam</span>
-                  <span className="font-semibold">
-                    {members.filter(m => m.has_received).length}/{members.length}
-                  </span>
+          <Card className="border-secondary/20 bg-secondary/5">
+            <CardHeader>
+              <CardTitle className="text-base">Status do Grupo</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Membros que receberam</span>
+                <span className="font-semibold">
+                  {members.filter(m => m.has_received).length}/{members.length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Depósitos confirmados</span>
+                <span className="font-semibold">
+                  {deposits.filter(d => d.status === "confirmed").length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Pagamentos pendentes/atrasados</span>
+                <span className="font-semibold">
+                  {payments.filter(p => p.status === "pending" || p.status === "late").length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Saldo a receber</span>
+                <span className="font-semibold">
+                  R$ {formatCurrency(payments.filter(p => p.status === "pending" || p.status === "late").reduce((acc, p) => acc + (p.amount || 0), 0))}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Parcelas por membro</CardTitle>
+              <CardDescription>Quantas parcelas faltam para cada membro</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {members.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground py-6">Nenhum membro</p>
+              ) : (
+                <div className="space-y-2">
+                  {members.map(m => {
+                    const expected = 4;
+                    const paidCount = payments.filter(p => p.payer_id === m.id && p.status === "paid").length;
+                    const remaining = Math.max(expected - paidCount, 0);
+                    return (
+                      <div key={m.id} className="flex items-center justify-between rounded-lg border p-3">
+                        <div>
+                          <p className="font-medium text-foreground">{m.profile.full_name}</p>
+                          <p className="text-xs text-muted-foreground">Posição {m.position}</p>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant={remaining === 0 ? "secondary" : "outline"}>
+                            {remaining === 0 ? "Concluído" : `Faltam ${remaining} de ${expected}`}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Depósitos confirmados</span>
-                  <span className="font-semibold">
-                    {deposits.filter(d => d.status === "confirmed").length}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Pagamentos pendentes/atrasados</span>
-                  <span className="font-semibold">
-                    {payments.filter(p => p.status === "pending" || p.status === "late").length}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Saldo a receber</span>
-                  <span className="font-semibold">
-                    R$ {formatCurrency(payments.filter(p => p.status === "pending" || p.status === "late").reduce((acc, p) => acc + (p.amount || 0), 0))}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+              )}
+            </CardContent>
+          </Card>
           </div>
         </div>
       </main>
