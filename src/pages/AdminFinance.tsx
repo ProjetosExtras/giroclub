@@ -28,6 +28,8 @@ const AdminFinance = () => {
   const [items, setItems] = useState<Payment[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
   const formatCurrency = (n?: number | null) => (typeof n === "number" ? n.toFixed(2) : "0.00");
 
@@ -75,11 +77,25 @@ const AdminFinance = () => {
     if (statusFilter !== "all") list = list.filter(i => i.status === statusFilter);
     const q = query.trim().toLowerCase();
     if (!q) return list;
-    return list.filter(i =>
+    const byText = list.filter(i =>
       (i.group?.name || "").toLowerCase().includes(q) ||
       (i.payer?.profile?.full_name || "").toLowerCase().includes(q)
     );
-  }, [items, statusFilter, query]);
+    const byDate = byText.filter(i => {
+      const d = i.due_date ? new Date(i.due_date) : null;
+      if (!d) return true;
+      if (fromDate) {
+        const f = new Date(fromDate);
+        if (d < new Date(f.getFullYear(), f.getMonth(), f.getDate())) return false;
+      }
+      if (toDate) {
+        const t = new Date(toDate);
+        if (d > new Date(t.getFullYear(), t.getMonth(), t.getDate(), 23, 59, 59, 999)) return false;
+      }
+      return true;
+    });
+    return byDate;
+  }, [items, statusFilter, query, fromDate, toDate]);
 
   const totals = useMemo(() => {
     const sum = (arr: Payment[], status?: string) => arr.reduce((acc, p) => acc + (status ? (p.status === status ? p.amount : 0) : p.amount), 0);
@@ -91,6 +107,20 @@ const AdminFinance = () => {
     const revenueProjected = items.reduce((acc, p) => acc + (p.status === "pending" || p.status === "late" ? (p.group?.service_fee_percent ? p.amount * (p.group.service_fee_percent / 100) : 0) : 0), 0);
     return { paid, pending, late, failed, revenuePaid, revenueProjected, all: sum(items) };
   }, [items]);
+
+  const updateStatus = async (id: string, status: "paid" | "pending" | "late" | "failed") => {
+    try {
+      const payload: any = { status };
+      if (status === "paid") payload.paid_at = new Date().toISOString();
+      if (status !== "paid") payload.paid_at = null;
+      const { error } = await supabase.from("payments").update(payload).eq("id", id);
+      if (error) throw error;
+      toast.success("Status atualizado");
+      await load();
+    } catch (e: any) {
+      toast.error(e.message || "Falha ao atualizar status");
+    }
+  };
 
   if (loading) {
     return (
@@ -159,6 +189,8 @@ const AdminFinance = () => {
                 </SelectContent>
               </Select>
               <Input placeholder="Buscar por grupo ou pagador" value={query} onChange={e => setQuery(e.target.value)} />
+              <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+              <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
             </div>
             <div className="rounded-md border">
               <Table>
@@ -171,6 +203,7 @@ const AdminFinance = () => {
                     <TableHead>Status</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Pago em</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -187,11 +220,19 @@ const AdminFinance = () => {
                       </TableCell>
                       <TableCell>{p.due_date ? new Date(p.due_date).toLocaleDateString() : ""}</TableCell>
                       <TableCell>{p.paid_at ? new Date(p.paid_at).toLocaleDateString() : ""}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => updateStatus(p.id, "paid")}>Marcar pago</Button>
+                          <Button size="sm" variant="outline" onClick={() => updateStatus(p.id, "pending")}>Marcar pendente</Button>
+                          <Button size="sm" variant="destructive" onClick={() => updateStatus(p.id, "late")}>Marcar atraso</Button>
+                          <Button size="sm" variant="outline" onClick={() => updateStatus(p.id, "failed")}>Marcar falhado</Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {!filtered.length && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">Nenhum pagamento</TableCell>
+                      <TableCell colSpan={8} className="text-center text-muted-foreground">Nenhum pagamento</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
