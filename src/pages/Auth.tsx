@@ -78,7 +78,7 @@ const Auth = () => {
         throw new Error("CPF deve ter 11 dígitos");
       }
 
-      const { error } = await supabase.auth.signUp({
+      const { data: signUpData, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -91,6 +91,70 @@ const Auth = () => {
       });
 
       if (error) throw error;
+
+      const user = signUpData?.user;
+      if (user) {
+        const { data: profExists } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("id", user.id)
+          .limit(1);
+        const exists = Array.isArray(profExists) && profExists.length > 0;
+        if (!exists) {
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .insert({
+              id: user.id,
+              full_name: fullName,
+              cpf: cpfNumbers,
+            });
+          if (profileError) throw profileError;
+        }
+
+        // Auto-assign to an available group with vacancies
+        try {
+          const { data: groups, error: gErr } = await supabase
+            .from("groups")
+            .select("id,max_members,created_at,status")
+            .eq("status", "active")
+            .order("created_at", { ascending: true })
+            .limit(10);
+          if (!gErr && groups && groups.length > 0) {
+            let picked: { id: string; max_members: number } | null = null;
+            for (const g of groups) {
+              const { data: gm } = await supabase
+                .from("group_members")
+                .select("position")
+                .eq("group_id", g.id);
+              const used = new Set((gm || []).map(m => m.position as number));
+              const max = (g.max_members as number) || 5;
+              if (used.size < max) {
+                picked = { id: g.id, max_members: max };
+                // find first free position
+                let pos = 1;
+                while (pos <= max && used.has(pos)) pos++;
+                if (pos <= max) {
+                  const { data: already } = await supabase
+                    .from("group_members")
+                    .select("id")
+                    .eq("group_id", g.id)
+                    .eq("profile_id", user.id)
+                    .maybeSingle();
+                  if (!already) {
+                    const { error: joinErr } = await supabase
+                      .from("group_members")
+                      .insert({ group_id: g.id, profile_id: user.id, position: pos });
+                    if (!joinErr) {
+                      toast.success("Você foi adicionado a um grupo disponível");
+                    }
+                  }
+                }
+                break;
+              }
+            }
+          }
+        } catch {}
+      }
       toast.success("Conta criada com sucesso! Você já pode fazer login.");
     } catch (error: any) {
       toast.error(error.message || "Erro ao criar conta");

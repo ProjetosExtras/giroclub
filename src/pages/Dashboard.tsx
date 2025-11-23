@@ -21,6 +21,7 @@ interface Group {
 interface Profile {
   full_name: string;
   cpf: string;
+  is_admin?: boolean | null;
 }
 
 const Dashboard = () => {
@@ -127,8 +128,24 @@ const Dashboard = () => {
       {/* Header */}
       <header className="border-b bg-card">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div>
+          <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-foreground">GiroClub</h1>
+            {profile?.is_admin ? (
+              <>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/admin">Painel</Link>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/admin/users">Admin</Link>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/admin/requests">Solicitações</Link>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/admin/groups">Grupos</Link>
+                </Button>
+              </>
+            ) : null}
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">

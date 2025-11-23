@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { ArrowLeft, QrCode, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,6 +53,13 @@ const GroupDetails = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [showPixModal, setShowPixModal] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [addCpf, setAddCpf] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const formatCurrency = (n?: number | null) => (typeof n === "number" ? n.toFixed(2) : "0.00");
+  const isValidUUID = (v?: string) => !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  const isAbortError = (e: any) => !!e && (e.name === "AbortError" || (typeof e.message === "string" && e.message.toLowerCase().includes("aborted")));
 
   useEffect(() => {
     checkUser();
@@ -58,6 +67,11 @@ const GroupDetails = () => {
 
   const checkUser = async () => {
     try {
+      if (!isValidUUID(id)) {
+        toast.error("ID do grupo inválido");
+        navigate("/dashboard");
+        return;
+      }
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
@@ -66,7 +80,14 @@ const GroupDetails = () => {
       }
 
       await loadGroupData();
+      const { data: me, error: meError } = await supabase
+        .from("profiles")
+        .select("id,is_admin")
+        .eq("id", session.user.id)
+        .single();
+      if (!meError && me) setIsAdmin(!!me.is_admin);
     } catch (error) {
+      if (isAbortError(error)) return;
       console.error("Error:", error);
       toast.error("Erro ao carregar dados do grupo");
     } finally {
@@ -75,49 +96,47 @@ const GroupDetails = () => {
   };
 
   const loadGroupData = async () => {
-    if (!id) return;
+    if (!id || !isValidUUID(id)) return;
+    try {
+      const { data: groupData, error: groupError } = await supabase
+        .from("groups")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (groupError) throw groupError;
+      setGroup(groupData);
 
-    // Get group details
-    const { data: groupData, error: groupError } = await supabase
-      .from("groups")
-      .select("*")
-      .eq("id", id)
-      .single();
+      const { data: membersData, error: membersError } = await supabase
+        .from("group_members")
+        .select(`
+          id,
+          position,
+          has_received,
+          received_at,
+          profile:profiles(full_name, cpf)
+        `)
+        .eq("group_id", id)
+        .order("position");
+      if (membersError) throw membersError;
+      setMembers(membersData || []);
 
-    if (groupError) throw groupError;
-    setGroup(groupData);
-
-    // Get members
-    const { data: membersData, error: membersError } = await supabase
-      .from("group_members")
-      .select(`
-        id,
-        position,
-        has_received,
-        received_at,
-        profile:profiles(full_name, cpf)
-      `)
-      .eq("group_id", id)
-      .order("position");
-
-    if (membersError) throw membersError;
-    setMembers(membersData || []);
-
-    // Get deposits
-    const { data: depositsData, error: depositsError } = await supabase
-      .from("deposits")
-      .select(`
-        id,
-        amount,
-        status,
-        created_at,
-        member:group_members(profile:profiles(full_name))
-      `)
-      .eq("group_id", id)
-      .order("created_at", { ascending: false });
-
-    if (depositsError) throw depositsError;
-    setDeposits(depositsData || []);
+      const { data: depositsData, error: depositsError } = await supabase
+        .from("deposits")
+        .select(`
+          id,
+          amount,
+          status,
+          created_at,
+          member:group_members(profile:profiles(full_name))
+        `)
+        .eq("group_id", id)
+        .order("created_at", { ascending: false });
+      if (depositsError) throw depositsError;
+      setDeposits(depositsData || []);
+    } catch (e: any) {
+      if (isAbortError(e)) return;
+      throw e;
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -190,10 +209,87 @@ const GroupDetails = () => {
             {/* Members */}
             <Card>
               <CardHeader>
-                <CardTitle>Membros do Grupo</CardTitle>
-                <CardDescription>
-                  {members.length} de {group.max_members} membros
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Membros do Grupo</CardTitle>
+                    <CardDescription>
+                      {members.length} de {group.max_members} membros
+                    </CardDescription>
+                  </div>
+                  {isAdmin && (
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline">Adicionar membro</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Adicionar membro ao grupo</DialogTitle>
+                          <DialogDescription>Informe o CPF do usuário para adicionar.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                          <Input placeholder="CPF" value={addCpf} onChange={e => setAddCpf(e.target.value)} />
+                        </div>
+                        <DialogFooter>
+                          <Button disabled={adding} onClick={async () => {
+                            try {
+                              setAdding(true);
+                              if (!id) return;
+                              if (members.length >= (group.max_members || 5)) {
+                                toast.error("Grupo já está cheio");
+                                return;
+                              }
+                              const cleanCpf = addCpf.replace(/[^0-9]/g, "");
+                              if (!cleanCpf) {
+                                toast.error("Informe um CPF válido");
+                                return;
+                              }
+                              const { data: profile, error: pErr } = await supabase
+                                .from("profiles")
+                                .select("id,full_name,cpf")
+                                .eq("cpf", cleanCpf)
+                                .single();
+                              if (pErr || !profile) {
+                                toast.error("Usuário não encontrado");
+                                return;
+                              }
+                              // Avoid duplicates by checking existing membership
+                              const { data: existing, error: existErr } = await supabase
+                                .from("group_members")
+                                .select("id")
+                                .eq("group_id", id)
+                                .eq("profile_id", profile.id)
+                                .maybeSingle();
+                              if (!existErr && existing) {
+                                toast.error("Usuário já é membro do grupo");
+                                return;
+                              }
+                              // Find first available position from 1..max_members
+                              const used = new Set(members.map(m => m.position));
+                              const max = group.max_members || 5;
+                              let pos = 1;
+                              while (pos <= max && used.has(pos)) pos++;
+                              if (pos > max) {
+                                toast.error("Não há posições disponíveis");
+                                return;
+                              }
+                              const { error: insErr } = await supabase
+                                .from("group_members")
+                                .insert({ group_id: id, profile_id: profile.id, position: pos });
+                              if (insErr) throw insErr;
+                              toast.success("Membro adicionado");
+                              setAddCpf("");
+                              await loadGroupData();
+                            } catch (e: any) {
+                              toast.error(e.message || "Falha ao adicionar membro");
+                            } finally {
+                              setAdding(false);
+                            }
+                          }}>Adicionar</Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -266,7 +362,7 @@ const GroupDetails = () => {
                           </div>
                           <div>
                             <p className="font-medium text-foreground">
-                              R$ {deposit.amount.toFixed(2)}
+                              R$ {formatCurrency(deposit.amount)}
                             </p>
                             <p className="text-sm text-muted-foreground">
                               {deposit.member?.profile?.full_name || "Desconhecido"}
@@ -303,17 +399,17 @@ const GroupDetails = () => {
               <CardContent className="space-y-4">
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Depósito inicial</span>
-                  <span className="font-semibold">R$ {group.deposit_amount.toFixed(2)}</span>
+                  <span className="font-semibold">R$ {formatCurrency(group.deposit_amount)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Valor recebido</span>
                   <span className="font-semibold text-secondary">
-                    R$ {group.payout_amount.toFixed(2)}
+                    R$ {formatCurrency(group.payout_amount)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Pagamento semanal</span>
-                  <span className="font-semibold">R$ {group.weekly_payment.toFixed(2)}</span>
+                  <span className="font-semibold">R$ {formatCurrency(group.weekly_payment)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t">
                   <span className="text-sm text-muted-foreground">Taxa de serviço</span>
@@ -380,7 +476,7 @@ const GroupDetails = () => {
                 </p>
               </div>
               <div className="space-y-2">
-                <p className="text-sm font-medium">Valor: R$ {group.deposit_amount.toFixed(2)}</p>
+                <p className="text-sm font-medium">Valor: R$ {formatCurrency(group.deposit_amount)}</p>
                 <p className="text-xs text-muted-foreground">
                   * Esta é uma simulação. Em produção, seria integrado com gateway de pagamento real.
                 </p>
