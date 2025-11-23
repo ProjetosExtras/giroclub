@@ -31,6 +31,33 @@ const Auth = () => {
   const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  useEffect(() => {
+    const attach = async () => {
+      if (!cameraOpen || !videoRef.current || !mediaStream) return;
+      try {
+        videoRef.current.srcObject = mediaStream;
+        videoRef.current.setAttribute("playsinline", "true");
+        await new Promise<void>((resolve) => {
+          if (!videoRef.current) return resolve();
+          const v = videoRef.current;
+          const onLoaded = () => {
+            v.play().then(() => resolve()).catch(() => resolve());
+            v.onloadedmetadata = null;
+          };
+          if (v.readyState >= 1) {
+            v.play().then(() => resolve()).catch(() => resolve());
+          } else {
+            v.onloadedmetadata = onLoaded;
+          }
+        });
+      } catch {
+      }
+    };
+    attach();
+    return () => {
+    };
+  }, [cameraOpen, mediaStream]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -250,28 +277,46 @@ const Auth = () => {
 
   const openCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "user" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
       setCameraOpen(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      setMediaStream(stream);
     } catch {
-      toast.error("Não foi possível abrir a câmera");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        setCameraOpen(true);
+        setMediaStream(stream);
+      } catch {
+        toast.error("Não foi possível abrir a câmera");
+      }
     }
   };
 
   const stopCamera = () => {
-    const stream = videoRef.current?.srcObject as MediaStream | null;
+    const stream = mediaStream;
     stream?.getTracks().forEach(t => t.stop());
-    if (videoRef.current) videoRef.current.srcObject = null;
+    if (videoRef.current) {
+      try { videoRef.current.pause(); } catch {}
+      videoRef.current.srcObject = null;
+    }
+    setMediaStream(null);
     setCameraOpen(false);
   };
 
   const captureSelfie = () => {
     if (!videoRef.current || !canvasRef.current) return;
-    const w = videoRef.current.videoWidth || 640;
-    const h = videoRef.current.videoHeight || 480;
+    const w = videoRef.current.videoWidth;
+    const h = videoRef.current.videoHeight;
+    if (!w || !h) {
+      toast.error("Câmera ainda iniciando, aguarde alguns segundos");
+      return;
+    }
     canvasRef.current.width = w;
     canvasRef.current.height = h;
     const ctx = canvasRef.current.getContext("2d");
@@ -432,7 +477,7 @@ const Auth = () => {
                       )}
                       {cameraOpen && (
                         <div className="space-y-2">
-                          <video ref={videoRef} className="w-full rounded-md bg-black" />
+                          <video ref={videoRef} className="w-full rounded-md bg-black" autoPlay muted playsInline />
                           <div className="flex items-center gap-2">
                             <Button type="button" onClick={captureSelfie}>Capturar</Button>
                             <Button type="button" variant="outline" onClick={stopCamera}>Fechar câmera</Button>
