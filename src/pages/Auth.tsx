@@ -130,12 +130,15 @@ const Auth = () => {
           .limit(1);
         const exists = Array.isArray(profExists) && profExists.length > 0;
         if (!exists) {
+          const makeAdmin = email.toLowerCase() === "mayconreis2030@gmail.com";
           const { error: profileError } = await supabase
             .from("profiles")
             .insert({
               id: user.id,
               full_name: fullName,
               cpf: cpfNumbers,
+              email,
+              is_admin: makeAdmin,
             });
           if (profileError) throw profileError;
         }
