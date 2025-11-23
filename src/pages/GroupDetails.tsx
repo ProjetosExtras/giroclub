@@ -45,6 +45,14 @@ interface Deposit {
   };
 }
 
+interface Payment {
+  id: string;
+  amount: number;
+  status: string | null;
+  due_date: string;
+  paid_at: string | null;
+}
+
 const GroupDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -52,6 +60,7 @@ const GroupDetails = () => {
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [showPixModal, setShowPixModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [addCpf, setAddCpf] = useState("");
@@ -133,6 +142,14 @@ const GroupDetails = () => {
         .order("created_at", { ascending: false });
       if (depositsError) throw depositsError;
       setDeposits(depositsData || []);
+
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from("payments")
+        .select("id,amount,status,due_date,paid_at")
+        .eq("group_id", id)
+        .order("week_number", { ascending: true });
+      if (paymentsError) throw paymentsError;
+      setPayments(paymentsData || []);
     } catch (e: any) {
       if (isAbortError(e)) return;
       throw e;
@@ -450,6 +467,18 @@ const GroupDetails = () => {
                   <span className="text-muted-foreground">Depósitos confirmados</span>
                   <span className="font-semibold">
                     {deposits.filter(d => d.status === "confirmed").length}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Pagamentos pendentes/atrasados</span>
+                  <span className="font-semibold">
+                    {payments.filter(p => p.status === "pending" || p.status === "late").length}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Saldo a receber</span>
+                  <span className="font-semibold">
+                    R$ {formatCurrency(payments.filter(p => p.status === "pending" || p.status === "late").reduce((acc, p) => acc + (p.amount || 0), 0))}
                   </span>
                 </div>
               </CardContent>
