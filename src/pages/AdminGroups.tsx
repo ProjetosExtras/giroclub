@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
 type Group = {
@@ -84,6 +85,20 @@ const AdminGroups = () => {
     }
   };
 
+  const deleteGroup = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("groups")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      toast.success("Grupo excluído");
+      await load();
+    } catch (e: any) {
+      toast.error(e.message || "Falha ao excluir grupo");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -145,6 +160,21 @@ const AdminGroups = () => {
                           <div className="flex justify-end gap-2">
                             <Button size="sm" variant="outline" onClick={() => setStatus(g.id, "active")}>Ativar</Button>
                             <Button size="sm" variant="destructive" onClick={() => setStatus(g.id, "completed")}>Concluir</Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="destructive">Excluir</Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Excluir grupo</AlertDialogTitle>
+                                  <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => deleteGroup(g.id)}>Excluir</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </TableCell>
                       </TableRow>
