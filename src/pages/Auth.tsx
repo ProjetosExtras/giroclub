@@ -21,6 +21,7 @@ const Auth = () => {
   const [fullName, setFullName] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
+  const [tab, setTab] = useState("signin");
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -111,7 +112,6 @@ const Auth = () => {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
           data: {
             cpf: cpfNumbers,
             full_name: fullName,
@@ -184,7 +184,19 @@ const Auth = () => {
           }
         } catch {}
       }
-      toast.success("Conta criada com sucesso! Você já pode fazer login.");
+      try {
+        const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password });
+        if (!loginErr) {
+          toast.success("Conta criada e login realizado!");
+          navigate("/dashboard");
+        } else {
+          toast.success("Conta criada com sucesso! Você já pode fazer login.");
+          setTab("signin");
+        }
+      } catch {
+        toast.success("Conta criada com sucesso! Você já pode fazer login.");
+        setTab("signin");
+      }
     } catch (error: any) {
       toast.error(error.message || "Erro ao criar conta");
     } finally {
@@ -202,7 +214,7 @@ const Auth = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="signin" className="w-full">
+          <Tabs value={tab} onValueChange={setTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Entrar</TabsTrigger>
               <TabsTrigger value="signup">Criar conta</TabsTrigger>
