@@ -14,30 +14,59 @@ import AdminGroups from "./pages/AdminGroups";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminFinance from "./pages/AdminFinance";
 import NotFound from "./pages/NotFound";
+import { Component, ReactNode } from "react";
 
 const queryClient = new QueryClient();
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error?: any }>{
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: any) {
+    console.error("Unhandled error:", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-foreground mb-2">Algo deu errado</h2>
+            <p className="text-muted-foreground mb-4">Tente recarregar a página ou voltar ao início.</p>
+            <a href="/" className="underline">Ir para início</a>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/admin/users" element={<AdminUsers />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/finance" element={<AdminFinance />} />
-          <Route path="/admin/requests" element={<AdminRequests />} />
-          <Route path="/admin/groups" element={<AdminGroups />} />
-          <Route path="/groups/new" element={<NewGroup />} />
-          <Route path="/groups/:id" element={<GroupDetails />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/finance" element={<AdminFinance />} />
+            <Route path="/admin/requests" element={<AdminRequests />} />
+            <Route path="/admin/groups" element={<AdminGroups />} />
+            <Route path="/groups/new" element={<NewGroup />} />
+            <Route path="/groups/:id" element={<GroupDetails />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </ErrorBoundary>
     </TooltipProvider>
   </QueryClientProvider>
 );
