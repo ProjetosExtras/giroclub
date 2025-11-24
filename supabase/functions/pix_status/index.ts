@@ -10,6 +10,9 @@ function json(data: unknown, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": "authorization, apikey, content-type, x-client-info, x-requested-with, accept",
+      "access-control-expose-headers": "*",
     },
   });
 }
@@ -20,12 +23,13 @@ function err(message: string, status = 400) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
+    const acrh = req.headers.get("access-control-request-headers") || "authorization, apikey, content-type, x-client-info, x-requested-with, accept";
     return new Response(null, {
       status: 204,
       headers: {
         "access-control-allow-origin": "*",
         "access-control-allow-methods": "POST, OPTIONS",
-        "access-control-allow-headers": "authorization, apikey, content-type",
+        "access-control-allow-headers": acrh,
         "access-control-max-age": "86400",
       },
     });
