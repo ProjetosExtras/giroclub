@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { formatDateBr } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -595,7 +596,7 @@ const GroupDetails = () => {
                               : "Falhou"}
                           </Badge>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {new Date(deposit.created_at).toLocaleDateString("pt-BR")}
+                            {formatDateBr(deposit.created_at)}
                           </p>
                         </div>
                       </div>

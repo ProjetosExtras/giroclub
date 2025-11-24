@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateBr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -142,7 +143,7 @@ const AdminDashboard = () => {
                         <TableCell className="font-medium">{u.full_name}</TableCell>
                         <TableCell>{u.cpf}</TableCell>
                         <TableCell>{u.email || ""}</TableCell>
-                        <TableCell>{u.created_at ? new Date(u.created_at).toLocaleDateString() : ""}</TableCell>
+                        <TableCell>{u.created_at ? formatDateBr(u.created_at) : ""}</TableCell>
                       </TableRow>
                     ))}
                     {!recentUsers.length && (

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { formatDateTimeBr } from "@/lib/utils";
 
 type Request = {
   id: string;
@@ -229,7 +230,7 @@ const AdminRequests = () => {
                         <TableCell>{r.cpf || ""}</TableCell>
                         <TableCell>{r.amount != null ? `R$ ${r.amount.toFixed(2)}` : ""}</TableCell>
                         <TableCell>{r.status || ""}</TableCell>
-                        <TableCell>{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</TableCell>
+                        <TableCell>{formatDateTimeBr(r.created_at)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button size="sm" variant="outline" onClick={() => updateStatus(r.id, "approved")}>Aprovar</Button>
@@ -261,7 +262,7 @@ const AdminRequests = () => {
                                   </div>
                                   <div className="flex items-center justify-between">
                                     <span className="text-muted-foreground">Solicitado</span>
-                                    <span className="font-medium">{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</span>
+                                    <span className="font-medium">{formatDateTimeBr(r.created_at)}</span>
                                   </div>
                                 </div>
                                 <DialogFooter>
@@ -302,7 +303,7 @@ const AdminRequests = () => {
                                   </div>
                                   <div className="flex items-center justify-between">
                                     <span className="text-muted-foreground">Solicitado</span>
-                                    <span className="font-medium">{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</span>
+                                    <span className="font-medium">{formatDateTimeBr(r.created_at)}</span>
                                   </div>
                                   <div className="flex items-center justify-between">
                                     <span className="text-muted-foreground">ID do usuário</span>
@@ -348,7 +349,7 @@ const AdminRequests = () => {
                         <TableCell>{r.cpf || ""}</TableCell>
                         <TableCell>{r.amount != null ? `R$ ${r.amount.toFixed(2)}` : ""}</TableCell>
                         <TableCell>{r.status || ""}</TableCell>
-                        <TableCell>{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</TableCell>
+                        <TableCell>{formatDateTimeBr(r.created_at)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Dialog>

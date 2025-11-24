@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { formatDateTimeBr } from "@/lib/utils";
 import { Plus, LogOut, Users, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
@@ -413,7 +414,7 @@ const Dashboard = () => {
                         <TableCell>{r.cpf || ""}</TableCell>
                         <TableCell>{r.amount != null ? `R$ ${r.amount.toFixed(2)}` : ""}</TableCell>
                         <TableCell>{r.status || ""}</TableCell>
-                        <TableCell>{r.created_at ? new Date(r.created_at).toLocaleString() : ""}</TableCell>
+                        <TableCell>{formatDateTimeBr(r.created_at)}</TableCell>
                       </TableRow>
                     ))}
                     {requests.length === 0 && (

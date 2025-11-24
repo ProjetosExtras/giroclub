@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateBr } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -226,8 +227,8 @@ const AdminFinance = () => {
                           {p.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{p.due_date ? new Date(p.due_date).toLocaleDateString() : ""}</TableCell>
-                      <TableCell>{p.paid_at ? new Date(p.paid_at).toLocaleDateString() : ""}</TableCell>
+                      <TableCell>{p.due_date ? formatDateBr(p.due_date) : ""}</TableCell>
+                      <TableCell>{p.paid_at ? formatDateBr(p.paid_at) : ""}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button size="sm" variant="outline" onClick={() => updateStatus(p.id, "paid")}>Marcar pago</Button>
