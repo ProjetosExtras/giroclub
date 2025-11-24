@@ -1,5 +1,5 @@
 -- Create profiles table with CPF
-CREATE TABLE public.profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   cpf TEXT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE public.profiles (
 );
 
 -- Create groups table
-CREATE TABLE public.groups (
+CREATE TABLE IF NOT EXISTS public.groups (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   created_by UUID REFERENCES public.profiles(id) NOT NULL,
@@ -25,7 +25,7 @@ CREATE TABLE public.groups (
 );
 
 -- Create group_members table
-CREATE TABLE public.group_members (
+CREATE TABLE IF NOT EXISTS public.group_members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE NOT NULL,
   profile_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE public.group_members (
 );
 
 -- Create deposits table
-CREATE TABLE public.deposits (
+CREATE TABLE IF NOT EXISTS public.deposits (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE NOT NULL,
   member_id UUID REFERENCES public.group_members(id) ON DELETE CASCADE NOT NULL,
@@ -50,7 +50,7 @@ CREATE TABLE public.deposits (
 );
 
 -- Create payments table
-CREATE TABLE public.payments (
+CREATE TABLE IF NOT EXISTS public.payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE NOT NULL,
   payer_id UUID REFERENCES public.group_members(id) ON DELETE CASCADE NOT NULL,
@@ -182,6 +182,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
@@ -197,10 +198,12 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS set_updated_at_profiles ON public.profiles;
 CREATE TRIGGER set_updated_at_profiles
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
+DROP TRIGGER IF EXISTS set_updated_at_groups ON public.groups;
 CREATE TRIGGER set_updated_at_groups
   BEFORE UPDATE ON public.groups
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
