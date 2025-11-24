@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 
 type SimpleUser = { id: string; full_name: string; cpf: string; email: string | null; created_at: string | null; };
-type SimpleGroup = { id: string; name: string; status: string | null; created_at: string | null; members?: { count: number }[] };
+type SimpleGroup = { id: string; name: string; status: string | null; created_at: string | null; group_members?: { count: number }[] };
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -20,22 +20,22 @@ const AdminDashboard = () => {
 
   const isAbortError = (e: any) => !!e && (e.name === "AbortError" || (typeof e.message === "string" && e.message.toLowerCase().includes("aborted")));
 
-  const load = async () => {
+  const load = async (signal: AbortSignal) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { navigate("/auth"); return; }
-      const { data: me, error: meError } = await supabase.from("profiles").select("id,is_admin").eq("id", session.user.id).single();
+      const { data: me, error: meError } = await supabase.from("profiles").select("id,is_admin").eq("id", session.user.id).abortSignal(signal).single();
       if (meError) throw meError;
       if (!me?.is_admin) { navigate("/dashboard"); return; }
 
-      const usersCountReq = supabase.from("profiles").select("id", { count: "exact", head: true });
-      const adminsCountReq = supabase.from("profiles").select("id", { count: "exact", head: true }).eq("is_admin", true);
-      const groupsActiveReq = supabase.from("groups").select("id", { count: "exact", head: true }).eq("status", "active");
-      const groupsCompletedReq = supabase.from("groups").select("id", { count: "exact", head: true }).eq("status", "completed");
-      const requestsPendingReq = supabase.from("loan_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
-      const depositsPendingReq = supabase.from("deposits").select("id", { count: "exact", head: true }).eq("status", "pending");
-      const recentUsersReq = supabase.from("profiles").select("id,full_name,cpf,email,created_at").order("created_at", { ascending: false }).limit(5);
-      const topGroupsReq = supabase.from("groups").select("id,name,status,created_at,group_members(count)").order("created_at", { ascending: false }).limit(5);
+      const usersCountReq = supabase.from("profiles").select("id", { count: "exact", head: true }).abortSignal(signal);
+      const adminsCountReq = supabase.from("profiles").select("id", { count: "exact", head: true }).eq("is_admin", true).abortSignal(signal);
+      const groupsActiveReq = supabase.from("groups").select("id", { count: "exact", head: true }).eq("status", "active").abortSignal(signal);
+      const groupsCompletedReq = supabase.from("groups").select("id", { count: "exact", head: true }).eq("status", "completed").abortSignal(signal);
+      const requestsPendingReq = supabase.from("loan_requests").select("id", { count: "exact", head: true }).eq("status", "pending").abortSignal(signal);
+      const depositsPendingReq = supabase.from("deposits").select("id", { count: "exact", head: true }).eq("status", "pending").abortSignal(signal);
+      const recentUsersReq = supabase.from("profiles").select("id,full_name,cpf,email,created_at").order("created_at", { ascending: false }).limit(5).abortSignal(signal);
+      const topGroupsReq = supabase.from("groups").select("id,name,status,created_at,group_members(count)").order("created_at", { ascending: false }).limit(5).abortSignal(signal);
 
       const [usersCount, adminsCount, groupsActive, groupsCompleted, requestsPending, depositsPending, recentUsersRes, topGroupsRes] = await Promise.all([
         usersCountReq, adminsCountReq, groupsActiveReq, groupsCompletedReq, requestsPendingReq, depositsPendingReq, recentUsersReq, topGroupsReq,
@@ -62,8 +62,9 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     mountedRef.current = true;
-    load();
-    return () => { mountedRef.current = false; };
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => { mountedRef.current = false; controller.abort(); };
   }, []);
 
   if (loading) {
@@ -171,7 +172,7 @@ const AdminDashboard = () => {
                       <TableRow key={g.id}>
                         <TableCell className="font-medium">{g.name}</TableCell>
                         <TableCell><Badge variant={g.status === "active" ? "default" : "secondary"}>{g.status || ""}</Badge></TableCell>
-                        <TableCell>{Array.isArray(g.members) && g.members[0]?.count != null ? g.members[0].count : ""}</TableCell>
+                        <TableCell>{Array.isArray(g.group_members) && g.group_members[0]?.count != null ? g.group_members[0].count : ""}</TableCell>
                         <TableCell><Button asChild size="sm" variant="outline"><Link to={`/groups/${g.id}`}>Abrir</Link></Button></TableCell>
                       </TableRow>
                     ))}

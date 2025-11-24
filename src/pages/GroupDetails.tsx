@@ -74,16 +74,76 @@ const GroupDetails = () => {
   const [requesting, setRequesting] = useState(false);
   const [requestErrorOpen, setRequestErrorOpen] = useState(false);
   const [requestErrorMsg, setRequestErrorMsg] = useState("");
+  const [pixLoading, setPixLoading] = useState(false);
+  const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
+  const [pixQrCode, setPixQrCode] = useState<string | null>(null);
+  const [pixError, setPixError] = useState<string | null>(null);
+  const [pixPaymentId, setPixPaymentId] = useState<number | null>(null);
+  const [pixDeadline, setPixDeadline] = useState<number | null>(null);
+  const [pixNow, setPixNow] = useState<number>(Date.now());
+
+  useEffect(() => {
+    let timer: number | null = null;
+    if (showPixModal) {
+      timer = setInterval(() => setPixNow(Date.now()), 1000) as unknown as number;
+    }
+    return () => { if (timer) clearInterval(timer as unknown as number); };
+  }, [showPixModal]);
+
+  useEffect(() => {
+    let interval: number | null = null;
+    const run = async () => {
+      if (!showPixModal || !pixPaymentId || !pixDeadline) return;
+      interval = setInterval(async () => {
+        if (!pixDeadline) return;
+        if (Date.now() >= pixDeadline) {
+          setShowPixModal(false);
+          toast.error("Tempo esgotado, transação não concluída");
+          if (interval) clearInterval(interval as unknown as number);
+          return;
+        }
+        try {
+          type PixStatusData = { status: string | null; status_detail: string | null; amount: number | null };
+          const { data, error } = await supabase.functions.invoke<PixStatusData>("pix_status", { body: { id: pixPaymentId } });
+          if (error) return;
+          const status = data?.status;
+          if (status === "approved") {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+              const { data: member } = await supabase
+                .from("group_members")
+                .select("id")
+                .eq("group_id", id)
+                .eq("profile_id", session.user.id)
+                .maybeSingle();
+              if (member?.id) {
+                await supabase.from("deposits").insert({ group_id: id, member_id: member.id, amount: group.deposit_amount, status: "confirmed" });
+              }
+            }
+            toast.success("Depósito confirmado");
+            setShowPixModal(false);
+            if (interval) clearInterval(interval as unknown as number);
+          }
+        } catch (_e) {
+          setPixError(null);
+        }
+      }, 3000) as unknown as number;
+    };
+    run();
+    return () => { if (interval) clearInterval(interval as unknown as number); };
+  }, [showPixModal, pixPaymentId, pixDeadline, id, group?.deposit_amount]);
 
   const formatCurrency = (n?: number | null) => (typeof n === "number" ? n.toFixed(2) : "0.00");
   const isValidUUID = (v?: string) => !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
   const isAbortError = (e: any) => !!e && (e.name === "AbortError" || (typeof e.message === "string" && e.message.toLowerCase().includes("aborted")));
 
   useEffect(() => {
-    checkUser();
+    const controller = new AbortController();
+    checkUser(controller.signal);
+    return () => { controller.abort(); };
   }, [id]);
 
-  const checkUser = async () => {
+  const checkUser = async (signal?: AbortSignal) => {
     try {
       if (!isValidUUID(id)) {
         toast.error("ID do grupo inválido");
@@ -96,11 +156,11 @@ const GroupDetails = () => {
         navigate("/auth");
         return;
       }
-
-      await loadGroupData();
+      await loadGroupData(signal);
       const { data: me, error: meError } = await supabase
         .from("profiles")
         .select("id,is_admin")
+        .abortSignal(signal as AbortSignal)
         .eq("id", session.user.id)
         .single();
       if (!meError && me) setIsAdmin(!!me.is_admin);
@@ -113,12 +173,13 @@ const GroupDetails = () => {
     }
   };
 
-  const loadGroupData = async () => {
+  const loadGroupData = async (signal?: AbortSignal) => {
     if (!id || !isValidUUID(id)) return;
     try {
       const { data: groupData, error: groupError } = await supabase
         .from("groups")
         .select("*")
+        .abortSignal(signal as AbortSignal)
         .eq("id", id)
         .single();
       if (groupError) throw groupError;
@@ -133,6 +194,7 @@ const GroupDetails = () => {
           received_at,
           profile:profiles(full_name, cpf)
         `)
+        .abortSignal(signal as AbortSignal)
         .eq("group_id", id)
         .order("position");
       if (membersError) throw membersError;
@@ -147,6 +209,7 @@ const GroupDetails = () => {
           created_at,
           member:group_members(profile:profiles(full_name))
         `)
+        .abortSignal(signal as AbortSignal)
         .eq("group_id", id)
         .order("created_at", { ascending: false });
       if (depositsError) throw depositsError;
@@ -155,6 +218,7 @@ const GroupDetails = () => {
       const { data: paymentsData, error: paymentsError } = await supabase
         .from("payments")
         .select("id,amount,status,due_date,paid_at,payer_id")
+        .abortSignal(signal as AbortSignal)
         .eq("group_id", id)
         .order("week_number", { ascending: true });
       if (paymentsError) throw paymentsError;
@@ -206,6 +270,11 @@ const GroupDetails = () => {
       </div>
     );
   }
+
+  const nextPosition = (() => {
+    const pending = members.filter(m => !m.has_received).map(m => m.position).sort((a, b) => a - b);
+    return pending.length ? pending[0] : null;
+  })();
 
   return (
     <div className="min-h-screen bg-background">
@@ -336,6 +405,9 @@ const GroupDetails = () => {
                           </p>
                           <p className="text-sm text-muted-foreground">
                             Posição {member.position}
+                            {nextPosition != null && member.position === nextPosition && !member.has_received ? (
+                              <span className="ml-2 text-xs font-semibold text-secondary">Pode solicitar</span>
+                            ) : null}
                           </p>
                         </div>
                       </div>
@@ -568,7 +640,29 @@ const GroupDetails = () => {
                 <CardTitle>Ações</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full gap-2" onClick={() => setShowPixModal(true)}>
+                <Button className="w-full gap-2" onClick={async () => {
+                  try {
+                    setPixError(null);
+                    setPixQrBase64(null);
+                    setPixQrCode(null);
+                    setPixLoading(true);
+                    setShowPixModal(true);
+                    const amount = group.deposit_amount;
+                    const { data, error } = await supabase.functions.invoke("pix_deposit", {
+                      body: { amount, description: `Depósito inicial • Grupo ${group.name}` }
+                    });
+                    if (error) throw error;
+                    setPixQrBase64((data as any)?.qr_code_base64 || null);
+                    setPixQrCode((data as any)?.qr_code || null);
+                    setPixPaymentId((data as any)?.id || null);
+                    setPixDeadline(Date.now() + 5 * 60 * 1000);
+                  } catch (e: any) {
+                    setPixError(e.message || "Falha ao gerar QR Code Pix");
+                    toast.error(e.message || "Falha ao gerar QR Code Pix");
+                  } finally {
+                    setPixLoading(false);
+                  }
+                }}>
                   <QrCode className="h-4 w-4" />
                   Fazer depósito via Pix
                 </Button>
@@ -603,8 +697,25 @@ const GroupDetails = () => {
                         setRequestErrorOpen(true);
                         return;
                       }
-                      if (member.position !== group.current_cycle) {
+                      if (nextPosition == null || member.position !== nextPosition) {
                         setRequestErrorMsg("Aguarde sua vez");
+                        setRequestErrorOpen(true);
+                        return;
+                      }
+                      if (members.length < (group.max_members || 0)) {
+                        setRequestErrorMsg("Não há membros suficientes para a operação");
+                        setRequestErrorOpen(true);
+                        return;
+                      }
+                      const { data: existing } = await supabase
+                        .from("loan_requests")
+                        .select("id,status")
+                        .eq("user_id", session.user.id)
+                        .eq("group_id", id)
+                        .eq("status", "pending")
+                        .maybeSingle();
+                      if (existing) {
+                        setRequestErrorMsg("Já existe uma solicitação em andamento");
                         setRequestErrorOpen(true);
                         return;
                       }
@@ -618,6 +729,7 @@ const GroupDetails = () => {
                         user_id: session.user.id,
                         full_name: prof?.full_name || null,
                         cpf: prof?.cpf || null,
+                        group_id: id,
                         amount,
                         status: "pending",
                       };
@@ -726,41 +838,60 @@ const GroupDetails = () => {
         </div>
       </main>
 
-      {/* Pix Modal (Simulation) */}
+      {/* Pix Modal */}
       {showPixModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <Card className="w-full max-w-md m-4">
             <CardHeader>
               <CardTitle>Pagamento via Pix</CardTitle>
-              <CardDescription>Simulação de pagamento</CardDescription>
+              <CardDescription>Gerado via Mercado Pago</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-col items-center justify-center p-6 bg-muted rounded-lg">
-                <div className="h-48 w-48 bg-background rounded-lg flex items-center justify-center mb-4">
-                  <QrCode className="h-32 w-32 text-muted-foreground" />
+                {pixLoading ? (
+                  <div className="h-48 w-48 flex items-center justify-center">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                  </div>
+                ) : pixQrBase64 ? (
+                  <img src={`data:image/png;base64,${pixQrBase64}`} alt="QR Code Pix" className="h-48 w-48 rounded" />
+                ) : (
+                  <div className="h-48 w-48 bg-background rounded-lg flex items-center justify-center">
+                    <QrCode className="h-32 w-32 text-muted-foreground" />
+                  </div>
+                )}
+                {pixQrCode ? (
+                  <p className="mt-3 text-xs break-all text-muted-foreground text-center">{pixQrCode}</p>
+                ) : null}
+                {pixError ? (
+                  <p className="mt-3 text-xs text-destructive">{pixError}</p>
+                ) : null}
+                {pixDeadline ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Tempo restante: {Math.max(Math.floor(((pixDeadline - pixNow) / 1000)), 0)}s</p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <div className={`h-2 w-2 rounded-full ${pixQrBase64 ? "bg-secondary" : "bg-muted-foreground"}`} />
+                  <span>QR gerado</span>
                 </div>
-                <p className="text-sm text-center text-muted-foreground">
-                  QR Code de pagamento (simulação)
-                </p>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className={`h-2 w-2 rounded-full ${pixPaymentId ? "bg-secondary" : "bg-muted-foreground"}`} />
+                  <span>Aguardando pagamento</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className={`h-2 w-2 rounded-full ${(!showPixModal && pixPaymentId) ? "bg-secondary" : "bg-muted-foreground"}`} />
+                  <span>Confirmado</span>
+                </div>
               </div>
               <div className="space-y-2">
                 <p className="text-sm font-medium">Valor: R$ {formatCurrency(group.deposit_amount)}</p>
-                <p className="text-xs text-muted-foreground">
-                  * Esta é uma simulação. Em produção, seria integrado com gateway de pagamento real.
-                </p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={() => setShowPixModal(false)}>
                   Cancelar
                 </Button>
-                <Button
-                  className="flex-1"
-                  onClick={() => {
-                    toast.success("Pagamento simulado com sucesso!");
-                    setShowPixModal(false);
-                  }}
-                >
-                  Simular pagamento
+                <Button className="flex-1" disabled={!pixQrCode} onClick={() => navigator.clipboard.writeText(pixQrCode || "").then(() => toast.success("Chave Pix copiada"))}>
+                  Copiar chave Pix
                 </Button>
               </div>
             </CardContent>
