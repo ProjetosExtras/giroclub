@@ -33,13 +33,14 @@ const AdminFinance = () => {
 
   const formatCurrency = (n?: number | null) => (typeof n === "number" ? n.toFixed(2) : "0.00");
 
-  const load = async () => {
+  const load = async (signal?: AbortSignal) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { navigate("/auth"); return; }
       const { data: me, error: meError } = await supabase
         .from("profiles")
         .select("id,is_admin")
+        .abortSignal(signal as AbortSignal)
         .eq("id", session.user.id)
         .single();
       if (meError) throw meError;
@@ -59,18 +60,25 @@ const AdminFinance = () => {
           payer:group_members(profile:profiles(full_name)),
           group:groups(name,service_fee_percent)
         `)
+        .abortSignal(signal as AbortSignal)
         .order("created_at", { ascending: false })
         .limit(1000);
       if (error) throw error;
       setItems((data as Payment[]) || []);
     } catch (e: any) {
+      const msg = String(e?.message || "").toLowerCase();
+      if (msg.includes("abort")) return;
       toast.error(e.message || "Erro ao carregar dados financeiros");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => { controller.abort(); };
+  }, []);
 
   const filtered = useMemo(() => {
     let list = items;

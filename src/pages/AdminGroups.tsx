@@ -20,6 +20,7 @@ type Group = {
   payout_amount: number | null;
   service_fee_percent: number | null;
   created_at: string | null;
+  group_members?: { count: number }[];
 };
 
 const AdminGroups = () => {
@@ -30,7 +31,7 @@ const AdminGroups = () => {
 
   const formatCurrency = (n?: number | null) => (typeof n === "number" ? n.toFixed(2) : "0.00");
 
-  const load = async () => {
+  const load = async (signal?: AbortSignal) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -40,6 +41,7 @@ const AdminGroups = () => {
       const { data: me, error: meError } = await supabase
         .from("profiles")
         .select("id,is_admin")
+        .abortSignal(signal as AbortSignal)
         .eq("id", session.user.id)
         .single();
       if (meError) throw meError;
@@ -49,18 +51,25 @@ const AdminGroups = () => {
       }
       const { data, error } = await supabase
         .from("groups")
-        .select("id,name,status,current_cycle,max_members,deposit_amount,weekly_payment,payout_amount,service_fee_percent,created_at")
+        .select("id,name,status,current_cycle,max_members,deposit_amount,weekly_payment,payout_amount,service_fee_percent,created_at,group_members(count)")
+        .abortSignal(signal as AbortSignal)
         .order("created_at", { ascending: false });
       if (error) throw error;
       setItems(data || []);
     } catch (e: any) {
+      const msg = String(e?.message || "").toLowerCase();
+      if (msg.includes("abort")) return;
       toast.error(e.message || "Erro ao carregar grupos");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => { controller.abort(); };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -151,7 +160,7 @@ const AdminGroups = () => {
                         <TableCell>
                           <Badge variant={g.status === "active" ? "default" : "secondary"}>{g.status || ""}</Badge>
                         </TableCell>
-                        <TableCell>{g.max_members ?? ""}</TableCell>
+                        <TableCell>{(Array.isArray(g.group_members) && g.group_members[0]?.count != null ? g.group_members[0].count : 0)}{g.max_members != null ? `/${g.max_members}` : ""}</TableCell>
                         <TableCell>{`R$ ${formatCurrency(g.deposit_amount)}`}</TableCell>
                         <TableCell>{`R$ ${formatCurrency(g.weekly_payment)}`}</TableCell>
                         <TableCell>{`R$ ${formatCurrency(g.payout_amount)}`}</TableCell>

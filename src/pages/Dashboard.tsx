@@ -48,6 +48,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     const run = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -60,6 +61,7 @@ const Dashboard = () => {
           .from("profiles")
           .select("*")
           .eq("id", session.user.id)
+          .abortSignal(controller.signal)
           .single();
         if (profileError) throw profileError;
         if (!cancelled) setProfile(profileData);
@@ -67,6 +69,7 @@ const Dashboard = () => {
         const { data: memberData, error: memberError } = await supabase
           .from("group_members")
           .select("group_id")
+          .abortSignal(controller.signal)
           .eq("profile_id", session.user.id);
         if (memberError) throw memberError;
 
@@ -75,6 +78,7 @@ const Dashboard = () => {
           const { data: groupsData, error: groupsError } = await supabase
             .from("groups")
             .select("*")
+            .abortSignal(controller.signal)
             .in("id", groupIds);
           if (groupsError) throw groupsError;
 
@@ -83,6 +87,7 @@ const Dashboard = () => {
               const { count } = await supabase
                 .from("group_members")
                 .select("*", { count: "exact", head: true })
+                .abortSignal(controller.signal)
                 .eq("group_id", group.id);
               return { ...group, member_count: count || 0 };
             })
@@ -95,12 +100,14 @@ const Dashboard = () => {
           const { count: createdCount } = await supabase
             .from("groups")
             .select("*", { count: "exact", head: true })
+            .abortSignal(controller.signal)
             .eq("created_by", session.user.id);
           if (!cancelled) setCanCreateGroup((groupsWithCount.length === 0) && ((createdCount || 0) === 0));
         } else {
           const { count: createdCount } = await supabase
             .from("groups")
             .select("*", { count: "exact", head: true })
+            .abortSignal(controller.signal)
             .eq("created_by", session.user.id);
           if (!cancelled) setCanCreateGroup(((createdCount || 0) === 0));
         }
@@ -114,7 +121,7 @@ const Dashboard = () => {
       }
     };
     run();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, []);
 
   const checkUser = async () => {
@@ -192,6 +199,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     const gid = selectedGroupId;
+    const controller = new AbortController();
     const run = async () => {
       if (!gid) {
         setRequests([]);
@@ -207,11 +215,13 @@ const Dashboard = () => {
         const { data: me } = await supabase
           .from("profiles")
           .select("id,is_admin")
+          .abortSignal(controller.signal)
           .eq("id", session.user.id)
           .single();
         let query = supabase
           .from("loan_requests")
           .select("id,user_id,full_name,cpf,amount,status,created_at,group_id")
+          .abortSignal(controller.signal)
           .eq("group_id", gid)
           .order("created_at", { ascending: false });
         if (!me?.is_admin) {
@@ -229,6 +239,7 @@ const Dashboard = () => {
       }
     };
     run();
+    return () => { controller.abort(); };
   }, [selectedGroupId, navigate]);
 
   const handleSignOut = async () => {
