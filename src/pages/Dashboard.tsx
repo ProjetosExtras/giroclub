@@ -234,6 +234,7 @@ const Dashboard = () => {
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut({ scope: "local" });
+      await new Promise((r) => setTimeout(r, 400));
     } catch {}
     navigate("/");
   };
