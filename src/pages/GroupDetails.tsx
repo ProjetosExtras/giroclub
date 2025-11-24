@@ -118,6 +118,7 @@ const GroupDetails = () => {
                 .maybeSingle();
               if (member?.id) {
                 await supabase.from("deposits").insert({ group_id: id, member_id: member.id, amount: group.deposit_amount, status: "confirmed" });
+                await loadGroupData();
               }
             }
             toast.success("Depósito confirmado");
@@ -777,7 +778,7 @@ const GroupDetails = () => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Depósitos confirmados</span>
                 <span className="font-semibold">
-                  {deposits.filter(d => d.status === "confirmed").length}
+                  {deposits.filter(d => d.status === "confirmed").length}/{members.length}
                 </span>
               </div>
               <div className="flex justify-between">
